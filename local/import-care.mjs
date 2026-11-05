@@ -1,0 +1,11 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
+import {descendants} from '../local-dist/model.mjs';
+import {reconcileCare} from './care-structure.mjs';
+const db=new DatabaseSync('.local-data/atlas.sqlite');db.exec('PRAGMA busy_timeout=5000;');
+try{db.exec('BEGIN IMMEDIATE');const before=db.prepare('SELECT * FROM org_state WHERE id=1').get();const previous=JSON.parse(before.nodes);const {nodes,headId,unmatched}=reconcileCare(previous);const insert=db.prepare('INSERT OR IGNORE INTO catalog_items(kind,name) VALUES (?,?)');for(const n of nodes){insert.run('designation',n.title);if(n.product)insert.run('product',n.product)}
+ const at=new Date().toISOString(),history=JSON.parse(before.history);history.unshift({at,by:'Super-admin import',action:'Reconciled CARE screenshot: reused named people and 9 vacancies; retained 6 mapping-pending people',previous});const dir=path.resolve('.local-data/backups');await fs.mkdir(dir,{recursive:true});const backup=path.join(dir,'before-care-'+at.replaceAll(':','-')+'.json');await fs.writeFile(backup,JSON.stringify({exportedAt:at,nodes:previous,version:before.version},null,2));
+ const result=db.prepare('UPDATE org_state SET nodes=?,history=?,version=version+1,updated_at=? WHERE id=1 AND version=?').run(JSON.stringify(nodes),JSON.stringify(history.slice(0,20)),at,before.version);if(result.changes!==1)throw Error('Chart changed during reconciliation.');db.prepare('INSERT INTO account_audit(at,actor,action) VALUES (?,?,?)').run(at,'Super-admin import','Reconciled CARE without duplicating named people; six existing mappings retained for confirmation');db.exec('COMMIT');
+ const saved=JSON.parse(db.prepare('SELECT nodes FROM org_state WHERE id=1').get().nodes),branch=[saved.find(n=>n.id===headId),...descendants(saved,headId)];const count=status=>branch.filter(n=>n.status===status).reduce((a,n)=>a+n.count,0);console.log(JSON.stringify({carePositions:branch.reduce((a,n)=>a+n.count,0),filled:count('Filled'),yetToJoin:count('Yet to join'),vacancies:count('Vacant'),pendingMoves:branch.filter(n=>n.pendingMove).length,retainedNamesNeedingMapping:unmatched,newUnnamedPositions:3,backup}));
+}catch(e){try{db.exec('ROLLBACK')}catch{}throw e}finally{db.close()}

@@ -1,0 +1,16 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
+import {buildPegNodes,sourceNote} from './peg-structure.mjs';
+import {validateNodes,descendants} from '../local-dist/model.mjs';
+const db=new DatabaseSync('.local-data/atlas.sqlite');db.exec('PRAGMA busy_timeout=5000;');
+try{db.exec('BEGIN IMMEDIATE');const before=db.prepare('SELECT * FROM org_state WHERE id=1').get();const previous=JSON.parse(before.nodes);const head=previous.find(n=>/Denslyn/i.test(n.name)&&n.parentId==='sagar');if(!head)throw Error('Engineering head Denslyn could not be found.');
+ if(previous.some(n=>n.id.startsWith('peg-'))||descendants(previous,head.id).length)throw Error('Engineering already has entries. Import stopped to avoid duplicate or overwritten people.');
+ const imported=buildPegNodes(head.id);const next=[...previous.map(n=>n.id===head.id?{...n,pending:false,notes:[n.notes,sourceNote,'Engineering total: 30 positions, 28 filled, 2 vacant. Includes 2 contract staff and 1 trainee; the screenshot does not identify their people or groups, so employment is unspecified on the imported entries.'].filter(Boolean).join('\n')}:n),...imported];const invalid=validateNodes(next);if(invalid)throw Error(invalid);
+ const insert=db.prepare('INSERT OR IGNORE INTO catalog_items(kind,name) VALUES (?,?)');for(const n of imported){insert.run('designation',n.title);insert.run('product',n.product)}
+ const at=new Date().toISOString();const history=JSON.parse(before.history);history.unshift({at,by:'Super-admin import',action:'Added Engineering/PEG from supplied screenshot: 28 filled and 2 vacancies including Denslyn',previous});
+ const dir=path.resolve('.local-data/backups');await fs.mkdir(dir,{recursive:true});const backup=path.join(dir,'before-peg-'+at.replaceAll(':','-')+'.json');await fs.writeFile(backup,JSON.stringify({exportedAt:at,nodes:previous,version:before.version},null,2));
+ const result=db.prepare('UPDATE org_state SET nodes=?,history=?,version=version+1,updated_at=? WHERE id=1 AND version=?').run(JSON.stringify(next),JSON.stringify(history.slice(0,20)),at,before.version);if(result.changes!==1)throw Error('Chart changed during import.');
+ db.prepare('INSERT INTO account_audit(at,actor,action) VALUES (?,?,?)').run(at,'Super-admin import','Imported Engineering/PEG screenshot; current non-Engineering entries preserved');db.exec('COMMIT');
+ const saved=JSON.parse(db.prepare('SELECT nodes FROM org_state WHERE id=1').get().nodes);const branch=[saved.find(n=>n.id===head.id),...descendants(saved,head.id)];const filled=branch.filter(n=>n.status==='Filled').reduce((a,n)=>a+n.count,0),vacant=branch.filter(n=>n.status==='Vacant').reduce((a,n)=>a+n.count,0);if(filled!==28||vacant!==2)throw Error('Saved Engineering totals do not match source.');for(const n of previous.filter(n=>n.id!==head.id))if(JSON.stringify(saved.find(s=>s.id===n.id))!==JSON.stringify(n))throw Error('An unrelated entry changed.');console.log(JSON.stringify({engineeringFilled:filled,engineeringVacancies:vacant,totalPositions:filled+vacant,namedLeads:6,recordsAdded:imported.length,unrelatedEntriesPreserved:true,backup}));
+}catch(e){try{db.exec('ROLLBACK')}catch{}throw e}finally{db.close()}

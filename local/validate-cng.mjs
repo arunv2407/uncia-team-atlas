@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
+import {reconcileNamedCng,cngCounts} from './cng-validation.mjs';
+const db=new DatabaseSync('.local-data/atlas.sqlite');db.exec('PRAGMA busy_timeout=5000;');
+try{db.exec('BEGIN IMMEDIATE');const current=db.prepare('SELECT * FROM org_state WHERE id=1').get();const previous=JSON.parse(current.nodes),before=cngCounts(previous);const {nodes,changes,links,summary}=reconcileNamedCng(previous);const after=cngCounts(nodes);assert.deepEqual(after,before);assert.equal(nodes.length,previous.length);assert.equal(new Set(nodes.map(n=>n.id)).size,nodes.length);assert.equal(after.CNG.total,86);assert.equal(after.CARE.total,27);
+ const modified=new Set(changes.map(c=>c.id).concat(['guna','karthik','govind']));for(const n of previous)if(!modified.has(n.id))assert.deepEqual(nodes.find(x=>x.id===n.id),n);for(const n of previous){const updated=nodes.find(x=>x.id===n.id);for(const key of ['name','status','count','product','assignment','pendingMove','needsMapping','namePending'])assert.equal(updated[key],n[key]);}
+ const at=new Date().toISOString(),dir=path.resolve('.local-data/backups');await fs.mkdir(dir,{recursive:true});const backup=path.join(dir,'before-cng-validation-'+at.replaceAll(':','-')+'.json');await fs.writeFile(backup,JSON.stringify({nodes:previous,version:current.version,exportedAt:at},null,2));
+ const insert=db.prepare('INSERT OR IGNORE INTO catalog_items(kind,name) VALUES (?,?)');for(const n of nodes)insert.run('designation',n.title);const history=JSON.parse(current.history);history.unshift({at,by:'Super-admin validation',action:'Validated CNG screenshot: confirmed CARE reporting; updated named designations; retained detailed CARE and flagged snapshot differences',previous});db.prepare('UPDATE org_state SET nodes=?,history=?,version=version+1,updated_at=? WHERE id=1 AND version=?').run(JSON.stringify(nodes),JSON.stringify(history.slice(0,20)),at,current.version);db.prepare('INSERT INTO account_audit(at,actor,action) VALUES (?,?,?)').run(at,'Super-admin validation','CNG source validation: '+changes.length+' explicit leader changes; no duplicate people, headcount or CARE allocation changes');db.exec('COMMIT');
+ console.log(JSON.stringify({changes,reportingLinksVerified:links.length,headcountsUnchanged:true,duplicatePeopleAdded:0,groups:after,summary,backup}));
+}catch(e){try{db.exec('ROLLBACK')}catch{}throw e}finally{db.close()}

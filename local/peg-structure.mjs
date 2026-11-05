@@ -1,0 +1,12 @@
+// Counts transcribed from PEG Org Chart.png supplied by the user on 2 November 2026.
+// The screenshot says each named leader is included in their row's Technical Lead count.
+export const sourceNote='Source: PEG Org Chart.png supplied 2 November 2026. Screenshot cites Final-List, V4. Named leaders are included in their row counts. Individual contributors are supplied as designation counts, without names.';
+export const pegRows=[
+ {id:'amsaveni',name:'Amsaveni',product:'UNCIA LEAP (LMS)',function:'Product',filled:6,vacant:0,groups:[['Software Engineer',2],['Associate Software Engineer',3]]},
+ {id:'riyas-mohammed',name:'Riyas Mohammed',product:'UNCIA LEAP (LMS)',function:'Product',filled:4,vacant:0,groups:[['Senior Software Engineer',2],['Software Engineer',1]]},
+ {id:'priyadharshini-anand-vishal',name:'Priyadharshini Anand Vishal',product:'UNCIA LEAP (LMS)',function:'L3 Support',filled:7,vacant:1,groups:[['Senior Software Engineer',2],['Software Engineer',3],['Associate Software Engineer',1]]},
+ {id:'arthur',name:'Arthur',product:'UNCIA FLOW (SCF)',function:'Product',filled:3,vacant:1,groups:[['Software Engineer',2]]},
+ {id:'vignesh-kannan',name:'Vignesh Kannan',product:'UNCIA FLOW (SCF)',function:'L3 Support',filled:4,vacant:0,groups:[['Software Engineer',2],['Associate Software Engineer',1]]},
+ {id:'aylwin-titus',name:'Aylwin Titus',product:'UNCIA PRIME (LOS)',function:'Product',filled:3,vacant:0,groups:[['Principal Software Engineer',1],['Associate Software Engineer',1]]},
+];
+export function buildPegNodes(headId){const result=[];for(const row of pegRows){const leadId='peg-'+row.id;const base={team:'Engineering',assignment:row.function,product:row.product,status:'Filled',employment:'Not specified',count:1,experience:'',tenure:'',notes:sourceNote};result.push({...base,id:leadId,parentId:headId,name:row.name,title:'Technical Lead',notes:sourceNote+' The Technical Lead designation follows the Tech Lead = 1 entry for this leader. Function: '+row.function+'.'});row.groups.forEach(([title,count],i)=>result.push({...base,id:leadId+'-group-'+(i+1),parentId:leadId,name:title+' group',title,count,notes:sourceNote+' Aggregate group; individual names and employment types are not supplied. Abbreviations expanded: SE = Software Engineer; Assoc. SE = Associate Software Engineer.'}));if(row.vacant)result.push({...base,id:leadId+'-vacancy',parentId:leadId,name:'',title:'Software Engineer',status:'Vacant',count:row.vacant,notes:sourceNote+' Open Software Engineer position. Employment type is not specified.'});}return result;}
