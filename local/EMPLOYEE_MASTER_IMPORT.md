@@ -1,5 +1,9 @@
 # Employee master import
 
+## Revision received — 6 November 2026
+
+The revised Satish-team workbook is applied with the same scoped workflow below. Reporting is read from each revision, rather than fixed to a particular manager: Aylwin Titus now reports to Ramkumar J; Bezil M, Parthiban Rajendiran and Nivedha S report to Rachappa Bandi; Sarah S, Pankaj Singh Sengar and Elavasanthan K report to Nivedha S. Updated recommended designations are retained in employee details; existing chart designations and manual QA Lead/Senior QA Lead edits remain intact. Vacancies and pending-joiner statuses are preserved. The validation script checks Aylwin against the supplied revision rather than the prior manager.
+
 ## Latest team update — 5 November 2026
 
 For `UNCIA_Employee_Master_Updated.xlsx`, use `node local/update-satish-team.mjs <extracted.json>` for a preview, `node local/check-satish-team.mjs <extracted.json>` for checks, then add `--apply` to apply. This workflow updates only GoLive, Quality Assurance and GoLive & QA, including Aylwin Titus's move into GoLive. The latest workbook reporting managers override the earlier flat-to-Satish correction. Hari KV, Raghuram Krishnan and Leslie report directly to Sagar, confirmed explicitly by the user. “Aylwin T” is resolved to the existing Aylwin Titus record. Existing designation edits, every vacancy, statuses, counts and unrelated records are retained. New people use Current Designation then Recommended Designation when no title exists. The workbook's framework-review prose is stored as source detail; it does not itself authorise designation changes.

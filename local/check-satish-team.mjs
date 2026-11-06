@@ -12,11 +12,11 @@ const snapshot=structuredClone(previous),{nodes,report}=reconcileSatishTeam(prev
 const byName=name=>nodes.find(n=>n.name===name);const targetRows=source.rows.filter(r=>['GoLive','Quality Assurance','GoLive & QA'].includes(r.Function));
 assert.equal(report.rows,targetRows.length);assert.equal(new Set(nodes.map(n=>n.id)).size,nodes.length);
 for(const row of targetRows){const n=nodes.find(n=>n.masterSourceHash===source.sha256&&n.masterRow===row.row);assert.ok(n);assert.equal(n.name,n.id==='sagar'?'Sagar':employeeIdentity(row.Name,row['Emp id']).name);if(n.id!=='sagar'){const raw=row['Reporting Manager'].replace(/\s+(?:E|C|TR)\d+$/i,'');const managerName=raw==='Aylwin T'?'Aylwin Titus':raw==='Sagar Ramesh Mahajan'?'Sagar':raw;assert.equal(n.parentId,byName(managerName)?.id,'Wrong manager for '+n.name);}
- for(const key of ['Skills','Skills / Specialisation','Framework Review Remarks'])if(row[key])assert.equal(n.employeeDetails[key],row[key]);
+ for(const key of ['Skills','Skills / Specialisation','Framework Review Remarks','Recommended Designation - Function'])if(row[key])assert.equal(n.employeeDetails[key],row[key]);
  assert.ok(!/\sE\d+$/i.test(n.name));assert.ok(!n.employeeDetails['Reporting override']);
 }
 for(const name of ['Hari KV','Raghuram Krishnan','Leslie'])assert.equal(byName(name).parentId,'sagar');
-assert.equal(byName('Aylwin Titus').parentId,byName('Ramesh K').id);
+const aylwinRow=targetRows.find(r=>employeeIdentity(r.Name,r['Emp id']).name==='Aylwin Titus');assert.equal(byName('Aylwin Titus').parentId,byName(employeeIdentity(aylwinRow['Reporting Manager']).name).id);
 for(const name of ['Om Prakash','Nikhil','Leslie','Sunny']){assert.equal(byName(name).employeeId,'');assert.equal(byName(name).status,'Yet to join');}
 for(const old of previous){const updated=nodes.find(n=>n.id===old.id);assert.ok(updated);const isNJ=targetRows.some(r=>r.row===updated.masterRow&&r['Emp id']==='NJ');assert.equal(updated.status,isNJ?'Yet to join':old.status);assert.equal(updated.count,old.count);if(old.title)assert.equal(updated.title,old.title);if(!targetRows.some(r=>r.row===updated.masterRow&&updated.masterSourceHash===source.sha256))assert.deepEqual(updated,old);}
 const repeated=reconcileSatishTeam(nodes,source).nodes;assert.deepEqual(repeated,nodes);
