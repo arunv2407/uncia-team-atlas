@@ -1,5 +1,9 @@
 # Employee master import
 
+## PEG / PMG refresh — 7 November 2026
+
+Run `node local/update-cng-team.mjs <extracted.json> --functions=PEG,PMG` to validate, then add `--apply` to save. The explicit scope includes 28 PEG rows and 8 PMG rows, with 14 existing vacancies in total. Named reporting already matches this workbook. Refresh source skills/specialisation, framework review remarks and recommended designation details while preserving current chart designations, statuses, vacancies, manual edits and unresolved prior records. Daisy Murmu and Abhinav Tyagi have Product Analyst recommendations in this revision; these are recorded as recommendations, not automatic title changes. Aylwin Titus is labelled GoLive and remains in the previously updated GoLive structure. Other departments remain untouched. Backups, markers and reports are separated by scope; the product-team report is `.local-data/imports/peg-pmg-team-validation.json`.
+
 ## CNG / CARE validation — 7 November 2026
 
 Use `node local/update-cng-team.mjs <extracted.json>` to validate the CNG and CNG - Care rows, then add `--apply` to save. This scoped workflow matches named employees by unique ID/name and existing vacancies by source row and label; repeated employee IDs on TBH rows are never used as personal identities. Managers resolve by ID or exact normalised name. Ambiguous identities stop the operation. The supplied revision has 82 CNG/CARE rows, including 12 vacancies, and its reporting already matches the chart. Additional source details are refreshed while current designations, assignments, pending statuses, existing flags, all vacancies and unrelated department records remain intact. A backup, undo entry, audit and validation report are saved locally. This validates the workbook as supplied; it does not infer pending transfers from the function label.
