@@ -1,5 +1,9 @@
 # Employee master import
 
+## CNG / CARE validation — 7 November 2026
+
+Use `node local/update-cng-team.mjs <extracted.json>` to validate the CNG and CNG - Care rows, then add `--apply` to save. This scoped workflow matches named employees by unique ID/name and existing vacancies by source row and label; repeated employee IDs on TBH rows are never used as personal identities. Managers resolve by ID or exact normalised name. Ambiguous identities stop the operation. The supplied revision has 82 CNG/CARE rows, including 12 vacancies, and its reporting already matches the chart. Additional source details are refreshed while current designations, assignments, pending statuses, existing flags, all vacancies and unrelated department records remain intact. A backup, undo entry, audit and validation report are saved locally. This validates the workbook as supplied; it does not infer pending transfers from the function label.
+
 ## Revision received — 6 November 2026
 
 The revised Satish-team workbook is applied with the same scoped workflow below. Reporting is read from each revision, rather than fixed to a particular manager: Aylwin Titus now reports to Ramkumar J; Bezil M, Parthiban Rajendiran and Nivedha S report to Rachappa Bandi; Sarah S, Pankaj Singh Sengar and Elavasanthan K report to Nivedha S. Updated recommended designations are retained in employee details; existing chart designations and manual QA Lead/Senior QA Lead edits remain intact. Vacancies and pending-joiner statuses are preserved. The validation script checks Aylwin against the supplied revision rather than the prior manager.
