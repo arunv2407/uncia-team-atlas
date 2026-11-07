@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {directoryColumns,filterDirectory,columnValues} from '../local-dist/directory-model.mjs';
+import {displayChoice} from '../local-dist/choices.mjs';
+const base={parentId:'sagar',title:'Engineer',assignment:'',employment:'Employee',count:1,experience:'',tenure:'',notes:''};
+const rows=[{...base,id:'sagar',parentId:null,name:'Sagar',team:'Leadership',status:'Filled'},{...base,id:'a',name:'A',team:'QA',status:'Vacant',employeeDetails:{Module:'PRIME'}},{...base,id:'b',name:'B',team:'QA',status:'Yet to join',employeeId:'E1',employeeDetails:{Module:'FLOW'}},{...base,id:'c',name:'C',team:'PEG',status:'Vacant',employeeId:'E2'}];
+const original=JSON.stringify(rows),columns=directoryColumns(rows);
+assert.deepEqual(filterDirectory(rows,columns,{function:['QA'],status:['Vacant / To be hired']}).map(n=>n.id),['a']);
+assert.deepEqual(filterDirectory(rows,columns,{status:['Vacant / To be hired','Pending joining']}).map(n=>n.id),['a','b','c']);
+assert.deepEqual(filterDirectory(rows,columns,{employeeId:[''],function:['QA']}).map(n=>n.id),['a']);
+assert.equal(filterDirectory(rows,columns,{status:[]}).length,0);
+assert.equal(filterDirectory(rows,columns,{'detail:Module':['FLOW']})[0].id,'b');
+assert.deepEqual(columnValues(rows,columns.find(c=>c.id==='reportsTo')),['','Sagar']);
+assert.equal(JSON.stringify(rows),original);
+assert.equal(displayChoice('Expected availability','46388'),'2027-01-01');
+assert.equal(displayChoice('Expected availability','To be confirmed'),'To be confirmed');
+console.log('PASS: combined column filters, multi-select, blanks, no selections, additional detail columns, reporting labels and input preservation.');

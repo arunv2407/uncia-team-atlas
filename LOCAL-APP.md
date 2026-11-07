@@ -37,3 +37,11 @@ Build changes with `node local/build.mjs`. Test with `node local/check-auth.mjs`
 The import scripts create chart-only backups under `.local-data/backups/`, record history, reject duplicate imports and preserve existing entries outside the affected scope. They have already been applied to this local database; do not rerun them on the same database. Account passwords and sessions are not included in the chart backups.
 
 Unnamed resources and vacancies are individual count-one entries, including resources originally supplied as grouped designation counts. Filled placeholders have a blank name with Name pending, so each can be edited independently later. Existing names, reporting, products and statuses are preserved. Group by designation keeps these unnamed placeholders separate. Selecting Name not yet available allows a new unnamed person; entering a count greater than one creates that many separate entries on save. `node local/check-individual-entries.mjs` checks conversion and count preservation. The local database conversion script is idempotent and keeps a chart backup.
+
+### Directory, vacancies and consistent entry
+
+Open positions shows each vacancy/to-be-hired position and each pending joiner separately. Filter by status, function, manager or any displayed column; select a record for full details. The directory has searchable, multi-select column filters (including blanks), a column chooser and CSV export of the filtered records. Filters combine across columns.
+
+When adding or editing, Function, designation, product/assignment, manager, client, employment, status and additional standard fields use dropdowns. Designation and Function are required; product/assignment remains optional. Names and employee IDs use text fields; headcount and experience use number controls. Imported source notes/review remarks are read-only.
+
+Super admins use Manage field options to add, rename or delete standard values. Existing chart values initialise the lists. Renaming updates linked records; in-use options cannot be deleted. Server validation rejects unknown categorical values, and guests/viewers cannot change lists or chart data.

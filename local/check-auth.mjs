@@ -49,6 +49,10 @@ try{
  assert.equal((await submit({...temp,title:''},chart.version)).status,400);
  assert.equal((await submit({...temp,title:'Unregistered designation'},chart.version)).status,400);
  assert.equal((await submit({...temp,product:'Unregistered product'},chart.version)).status,400);
+ for(const [field,name] of Object.entries(temp.employeeDetails))assert.equal((await admin.request('/api/field-choices',{field,name})).status,201);
+ assert.equal((await anon.request('/api/field-choices',{field:'Function',name:'Blocked'})).status,401);
+ assert.equal((await editor.request('/api/field-choices',{field:'Function',name:'Blocked'})).status,403);
+ assert.equal((await submit({...temp,team:'Unregistered function'},chart.version)).status,400);
  let saved=await submit(temp,chart.version);assert.equal(saved.status,200);assert.equal(saved.data.nodes.find(n=>n.id===temp.id).product,'');assert.deepEqual(saved.data.nodes.find(n=>n.id===temp.id).employeeDetails,temp.employeeDetails);assert.deepEqual((await editor.request('/api/chart')).data.nodes.find(n=>n.id===temp.id).employeeDetails,temp.employeeDetails);
  let modified=saved.data.nodes.map(n=>n.id===temp.id?{...n,product}:n);
  saved=await admin.request('/api/chart',{nodes:modified,version:saved.data.version,action:'Set registered product'},'PUT');assert.equal(saved.status,200);
@@ -77,6 +81,17 @@ try{
   const undo=await admin.request('/api/chart',{version:after.version,undo:true},'PUT');assert.equal(undo.status,200);assert.deepEqual(undo.data.nodes,before.nodes);assert.ok((kind==='designation'?undo.data.catalogs.designations:undo.data.catalogs.products).includes(from));
   const redo=await admin.request('/api/chart',{version:undo.data.version,undo:true},'PUT');assert.equal(redo.status,200);assert.deepEqual(redo.data.nodes,after.nodes);
   const reset=await admin.request('/api/chart',{version:redo.data.version,undo:true},'PUT');assert.equal(reset.status,200);assert.deepEqual(reset.data.nodes,before.nodes);
+ }
+ {
+  const before=(await admin.request('/api/chart')).data,from=before.nodes.find(n=>n.id==='pankaj').team,to='Renamed function test';
+  const renamed=await admin.request('/api/field-choices',{field:'Function',from,to},'PATCH');assert.equal(renamed.status,200);
+  const after=(await admin.request('/api/chart')).data;assert.ok(after.nodes.filter(n=>n.team===to).length>0);assert.equal(after.nodes.filter(n=>n.team===from).length,0);
+  assert.equal((await admin.request('/api/field-choices',{field:'Function',name:to},'DELETE')).status,409);
+  const undo=await admin.request('/api/chart',{version:after.version,undo:true},'PUT');assert.equal(undo.status,200);assert.deepEqual(undo.data.nodes,before.nodes);
+  const redo=await admin.request('/api/chart',{version:undo.data.version,undo:true},'PUT');assert.equal(redo.status,200);assert.deepEqual(redo.data.nodes,after.nodes);
+  assert.equal((await admin.request('/api/field-choices',{field:'Function',name:'Unused test'})).status,201);
+  assert.equal((await admin.request('/api/field-choices',{field:'Function',name:'unused test'})).status,409);
+  assert.equal((await admin.request('/api/field-choices',{field:'Function',name:'Unused test'},'DELETE')).status,200);
  }
  let users=(await admin.request('/auth/users')).data.users;const adminId=users.find(u=>u.username==='test.admin').id,editorId=users.find(u=>u.username==='test.heads').id;
  assert.equal((await admin.request('/auth/users/'+adminId,{disabled:true},'PATCH')).status,400);

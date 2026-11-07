@@ -7,6 +7,7 @@ import {hashPassword,verifyPassword,passwordError,token,digest,safeEqual} from '
 import {loginPage,accountPage,adminPage} from './pages.mjs';
 import {initialNodes} from '../local-dist/seed.mjs';
 import {validateNodes,expandUnnamedResources} from '../local-dist/model.mjs';
+import {choiceFields,choiceValue,withChoice} from '../local-dist/choices.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const idle=30*60*1000,absolute=8*60*60*1000;
 const cookieName='uncia_session';
@@ -37,7 +38,11 @@ export async function createApp({dataDir=path.join(root,'.local-data'),importPre
    db.prepare('INSERT INTO app_meta(key,value) VALUES (?,?)').run('assignment_products_v1',new Date().toISOString());db.exec('COMMIT');
   }catch(e){db.exec('ROLLBACK');throw e}
  }
- const catalogs=()=>({designations:db.prepare("SELECT name FROM catalog_items WHERE kind='designation' ORDER BY name COLLATE NOCASE").all().map(x=>x.name),products:db.prepare("SELECT name FROM catalog_items WHERE kind='product' ORDER BY name COLLATE NOCASE").all().map(x=>x.name)});
+ db.exec('CREATE TABLE IF NOT EXISTS field_choices(field TEXT NOT NULL,name TEXT COLLATE NOCASE NOT NULL,PRIMARY KEY(field,name));');
+ const insertChoice=db.prepare('INSERT OR IGNORE INTO field_choices(field,name) VALUES (?,?)');
+ function seedChoices(nodes){for(const n of nodes)for(const field of choiceFields){const value=choiceValue(n,field);if(value)insertChoice.run(field,value)}}
+ seedChoices(JSON.parse(db.prepare('SELECT nodes FROM org_state WHERE id=1').get().nodes));
+ const catalogs=()=>{seedChoices(JSON.parse(db.prepare('SELECT nodes FROM org_state WHERE id=1').get().nodes));return ({designations:db.prepare("SELECT name FROM catalog_items WHERE kind='designation' ORDER BY name COLLATE NOCASE").all().map(x=>x.name),products:db.prepare("SELECT name FROM catalog_items WHERE kind='product' ORDER BY name COLLATE NOCASE").all().map(x=>x.name),choices:Object.fromEntries(choiceFields.map(field=>[field,db.prepare('SELECT name FROM field_choices WHERE field=? ORDER BY name COLLATE NOCASE').all(field).map(x=>x.name)]))})};
  const publicRole=role=>role==='admin'?'admin':'viewer';
  const audit=(actor,action)=>db.prepare('INSERT INTO account_audit(at,actor,action) VALUES (?,?,?)').run(new Date().toISOString(),actor,action);
  if(bootstrap&&db.prepare('SELECT count(*) n FROM users').get().n===0){for(const user of bootstrap){if(!usernamePattern.test(user.username)||passwordError(user.password)||!['admin','editor'].includes(user.role))throw Error('Invalid bootstrap account.');db.prepare('INSERT INTO users(username,name,hash,role,created_at) VALUES (?,?,?,?,?)').run(user.username,user.name,await hashPassword(user.password),user.role,new Date().toISOString());}if(!db.prepare("SELECT id FROM users WHERE role='admin'").get())throw Error('A super-admin account is required.');audit('Setup','Initial super-admin and editor accounts created');}
@@ -103,6 +108,31 @@ export async function createApp({dataDir=path.join(root,'.local-data'),importPre
    }
    return json(res,{error:'Account operation not found.'},404);
   }
+  if(route==='/api/field-choices'){
+   if(s.role!=='admin')throw fail('Only a super admin can manage field options.',403);
+   if(!['POST','PATCH','DELETE'].includes(method))throw fail('Method not allowed.',405);
+   const input=await body(req),field=input.field,name=typeof input.name==='string'?input.name.trim():'',from=typeof input.from==='string'?input.from:'',to=typeof input.to==='string'?input.to.trim():'';
+   if(!choiceFields.includes(field)||!(method==='PATCH'?from&&to:name)||(method==='PATCH'?to:name).length>3000)throw fail('Choose a field and enter a valid option.');
+   let updatedPeople=0;
+   transaction(()=>{
+    if(method==='POST'){if(db.prepare('SELECT name FROM field_choices WHERE field=? AND name=? COLLATE NOCASE').get(field,name))throw fail('This option already exists.',409);insertChoice.run(field,name);}
+    else {
+     const old=method==='PATCH'?from:name;
+     if(!db.prepare('SELECT name FROM field_choices WHERE field=? AND name=? COLLATE BINARY').get(field,old))throw fail('Option not found. Refresh the list.',404);
+     const current=state(),previous=JSON.parse(current.nodes);
+     if(method==='DELETE'){if(previous.some(n=>choiceValue(n,field).toLowerCase()===name.toLowerCase()))throw fail('This option is in use. Reassign its records before deleting it.',409);db.prepare('DELETE FROM field_choices WHERE field=? AND name=? COLLATE BINARY').run(field,name);}
+     else {
+      const conflict=db.prepare('SELECT name FROM field_choices WHERE field=? AND name=? COLLATE NOCASE').get(field,to);if(conflict&&conflict.name!==from)throw fail('This option already exists.',409);
+      const nodes=previous.map(n=>{if(choiceValue(n,field).toLowerCase()!==from.toLowerCase())return n;updatedPeople+=n.count;return withChoice(n,field,to)});
+      const invalid=validateNodes(nodes);if(invalid)throw fail(invalid);
+      db.prepare('UPDATE field_choices SET name=? WHERE field=? AND name=? COLLATE BINARY').run(to,field,from);
+      const history=JSON.parse(current.history),at=new Date().toISOString();history.unshift({at,by:s.name,action:'Renamed '+field+': '+from+' → '+to,previous,fieldChoiceRename:{field,from,to}});
+      db.prepare('UPDATE org_state SET nodes=?,history=?,version=version+1,updated_at=? WHERE id=1').run(JSON.stringify(nodes),JSON.stringify(history.slice(0,20)),at);
+     }
+    }
+    audit(s.username,method+' field option: '+field);
+   });return json(res,{...catalogs(),updatedPeople},method==='POST'?201:200);
+  }
   if(route==='/api/catalogs'){
    if(method==='GET')return json(res,catalogs());
    if(s.role!=='admin')return json(res,{error:'Only a super admin can manage designations or products/assignments.'},403);
@@ -138,7 +168,7 @@ export async function createApp({dataDir=path.join(root,'.local-data'),importPre
   if(route==='/api/chart'){
    if(method==='GET')return json(res,{...view(state()),user:{name:s.name,email:s.username,role:publicRole(s.role),localAuth:true}});
    if(s.role!=='admin')return json(res,{error:'Only a super admin can change the organisation chart.'},403);
-   if(method==='PUT'){const input=await body(req,5000000);const output=transaction(()=>{const current=state();if(input.version!==current.version)throw fail('Someone else updated the chart. Reload the latest version before saving.',409);const history=JSON.parse(current.history);let nodes=input.nodes,action=String(input.action||'Updated chart').slice(0,200),catalogRename;if(input.undo){if(!history[0]?.previous)throw fail('There is no change to undo.');nodes=history[0].previous;action='Undid: '+history[0].action;const rename=history[0].catalogRename;if(rename){const exists=db.prepare('SELECT name FROM catalog_items WHERE kind=? AND name=? COLLATE NOCASE').get(rename.kind,rename.from);if(exists&&exists.name!==rename.to)throw fail('Cannot undo this rename because its previous name is now in use.',409);if(!db.prepare('UPDATE catalog_items SET name=? WHERE kind=? AND name=? COLLATE BINARY').run(rename.from,rename.kind,rename.to).changes)throw fail('The renamed item has changed. Refresh and try again.',409);catalogRename={kind:rename.kind,from:rename.to,to:rename.from}}}const invalid=validateNodes(nodes);if(invalid)throw fail(invalid);try{nodes=expandUnnamedResources(nodes)}catch(e){throw fail(e.message)}const splitError=validateNodes(nodes);if(splitError)throw fail(splitError);for(const n of nodes){if(n.title&&!db.prepare("SELECT name FROM catalog_items WHERE kind='designation' AND name=? COLLATE BINARY").get(n.title))throw fail('Select a designation from the dropdown. Add new designations through Manage lists.');if(n.product&&!db.prepare("SELECT name FROM catalog_items WHERE kind='product' AND name=? COLLATE BINARY").get(n.product))throw fail('Select a product/assignment from the dropdown, or leave it blank.');}const at=new Date().toISOString();history.unshift({at,by:s.name,action,previous:JSON.parse(current.nodes),...(catalogRename?{catalogRename}:{})});db.prepare('UPDATE org_state SET nodes=?,history=?,version=version+1,updated_at=? WHERE id=1').run(JSON.stringify(nodes),JSON.stringify(history.slice(0,20)),at);return view(state())});return json(res,output)}
+   if(method==='PUT'){const input=await body(req,5000000);const output=transaction(()=>{const current=state();if(input.version!==current.version)throw fail('Someone else updated the chart. Reload the latest version before saving.',409);const history=JSON.parse(current.history);let nodes=input.nodes,action=String(input.action||'Updated chart').slice(0,200),catalogRename,fieldChoiceRename;if(input.undo){if(!history[0]?.previous)throw fail('There is no change to undo.');nodes=history[0].previous;action='Undid: '+history[0].action;const fc=history[0].fieldChoiceRename;if(fc){const conflict=db.prepare('SELECT name FROM field_choices WHERE field=? AND name=? COLLATE NOCASE').get(fc.field,fc.from);if(conflict&&conflict.name!==fc.to)throw fail('Previous option name is now in use.',409);if(!db.prepare('UPDATE field_choices SET name=? WHERE field=? AND name=? COLLATE BINARY').run(fc.from,fc.field,fc.to).changes)throw fail('The renamed option has changed.',409);fieldChoiceRename={field:fc.field,from:fc.to,to:fc.from}}seedChoices(nodes);const rename=history[0].catalogRename;if(rename){const exists=db.prepare('SELECT name FROM catalog_items WHERE kind=? AND name=? COLLATE NOCASE').get(rename.kind,rename.from);if(exists&&exists.name!==rename.to)throw fail('Cannot undo this rename because its previous name is now in use.',409);if(!db.prepare('UPDATE catalog_items SET name=? WHERE kind=? AND name=? COLLATE BINARY').run(rename.from,rename.kind,rename.to).changes)throw fail('The renamed item has changed. Refresh and try again.',409);catalogRename={kind:rename.kind,from:rename.to,to:rename.from}}}const invalid=validateNodes(nodes);if(invalid)throw fail(invalid);try{nodes=expandUnnamedResources(nodes)}catch(e){throw fail(e.message)}nodes=nodes.map(n=>{for(const field of choiceFields){const value=choiceValue(n,field);if(!value){if(field==='Function')throw fail('Select a function from the dropdown.');continue}const option=db.prepare('SELECT name FROM field_choices WHERE field=? AND name=? COLLATE NOCASE').get(field,value);if(!option)throw fail('Select '+field+' from the dropdown. Add new values through Manage field options.');if(option.name!==value)n=withChoice(n,field,option.name)}return n});const splitError=validateNodes(nodes);if(splitError)throw fail(splitError);for(const n of nodes){if(n.title&&!db.prepare("SELECT name FROM catalog_items WHERE kind='designation' AND name=? COLLATE BINARY").get(n.title))throw fail('Select a designation from the dropdown. Add new designations through Manage lists.');if(n.product&&!db.prepare("SELECT name FROM catalog_items WHERE kind='product' AND name=? COLLATE BINARY").get(n.product))throw fail('Select a product/assignment from the dropdown, or leave it blank.');}const at=new Date().toISOString();history.unshift({at,by:s.name,action,previous:JSON.parse(current.nodes),...(catalogRename?{catalogRename}:{}),...(fieldChoiceRename?{fieldChoiceRename}:{})});db.prepare('UPDATE org_state SET nodes=?,history=?,version=version+1,updated_at=? WHERE id=1').run(JSON.stringify(nodes),JSON.stringify(history.slice(0,20)),at);return view(state())});return json(res,output)}
    return json(res,{error:'Method not allowed.'},405);
   }
   if(route==='/assets/app.js'||route==='/assets/app.css'){const content=await fs.readFile(path.join(root,'local-dist',route.endsWith('.css')?'app.css':'app.js'));res.writeHead(200,{'Content-Type':route.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8'});return res.end(content)}
