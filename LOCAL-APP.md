@@ -2,7 +2,7 @@
 
 Run `Start-Org-Chart.ps1`, then open http://127.0.0.1:5174/. Run `Stop-Org-Chart.ps1` to stop it. The app listens only on this computer, requires Node.js 24+, and does not use ChatGPT sign-in.
 
-Only super admins can change the chart, add/edit/remove people, change reporting, undo edits, restore backups, or add designations and products through Manage lists. Every other account is a read-only Viewer, including the existing shared functional-head account. Viewers can search, filter, expand/collapse, inspect people, and export the directory. Everyone can change their own login password through My account. Super admins can manage logins and reset or disable accounts. The last active super admin cannot be disabled.
+Viewing requires no account or login. Visitors can open the chart and directory, search, filter, expand/collapse, inspect people and export the directory. Choose **Sign in to edit** to open the administrator login page. Only an authenticated super admin can add/edit/remove people, change reporting, undo edits, restore backups, or manage designations, products and accounts. Choose **Finish editing** to end the editor session and return to the public read-only chart. No login credentials are included in the UI, documentation or source; deployment account settings reside in the ignored local database. Authenticated account-management pages remain private.
 
 Designation is a required dropdown when adding or editing a person. Product/Assignment is an optional dropdown populated from existing assignment entries, with original client/product combinations retained. On the first upgrade, existing entries are copied into the product field; explicitly clearing it later remains cleared after restart. Separate client/project notes are retained.
 
@@ -11,6 +11,12 @@ Manage lists lets super admins add and rename both designations and products/ass
 The database is `.local-data/atlas.sqlite`. It contains chart data, account password hashes, sessions and account activity. Do not publish this folder or include it in source control. Use the chart's Download backup for a portable JSON export of chart data; this does not include login accounts. For a complete backup, stop the app and copy `.local-data/`. Restart it afterward.
 
 Local passwords use salted scrypt hashes. Session cookies are HttpOnly and SameSite=Strict. Sessions expire after 30 minutes idle or 8 hours total. Resetting a password or disabling an account revokes that account's sessions. Account and IP sign-in attempt limits apply. State-changing requests require a session CSRF token and matching origin.
+
+Public GET routes are the chart, browser assets, catalog lists and a guest access-mode response. Visitors receive a viewer role without account data, session tokens or change history. All write routes and account-management APIs require authentication; chart and catalog edits additionally require the super-admin role. Guest read access does not create a privileged session. The configured editor account is provisioned separately and is never hardcoded into the application.
+
+## Consolidated master
+
+`local/consolidated-master.mjs` reconciles the final workbook by employee identity and reporting ancestry to Sagar. `node local/import-consolidated.mjs <extracted.json>` previews; `--apply` saves after a backup. Run `node local/check-consolidated.mjs <extracted.json>` before applying. TBH/TBD records are individual vacancies; NJ means hired but not joined. Existing vacancies and earlier unmatched records remain, with unmatched named/unnamed positions flagged for confirmation. Source-row shifts do not create duplicate employees or vacancies. A changed Current Designation in the new source updates the chart; unchanged source titles preserve manual chart edits. Recommended designations and framework review prose remain labelled source details rather than automatic appointments. Source managers resolve through IDs and reviewed name aliases; records whose reporting ancestry lies outside Sagar's chart are reported separately. The consolidated review report and data backups remain under ignored `.local-data/`.
 
 ## Later hosting and company sign-in
 

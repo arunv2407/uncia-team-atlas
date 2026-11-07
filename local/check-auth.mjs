@@ -10,7 +10,9 @@ await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const base='http://127.
 class Client{cookie='';csrf='';async request(route,body,method=body?'POST':'GET',extra={}){const headers={'Content-Type':'application/json',Origin:base,'X-CSRF-Token':this.csrf,...extra};if(this.cookie)headers.Cookie=this.cookie;const response=await fetch(base+route,{method,headers,body:body===undefined?undefined:JSON.stringify(body),redirect:'manual'});const raw=response.headers.get('set-cookie');if(raw)this.cookie=raw.split(';')[0];const content=response.headers.get('content-type')?.includes('json')?await response.json():await response.text();return {status:response.status,data:content,headers:response.headers}}async login(username,password){const r=await this.request('/auth/login',{username,password});if(r.status===200){const me=await this.request('/auth/me');this.csrf=me.data.csrf}return r}}
 try{
  const anon=new Client(),admin=new Client(),editor=new Client();
- assert.equal((await anon.request('/api/chart')).status,401);assert.equal((await anon.request('/')).status,303);assert.equal((await anon.request('/assets/app.js')).status,303);
+ const publicChart=await anon.request('/api/chart');assert.equal(publicChart.status,200);assert.equal(publicChart.data.user.role,'viewer');assert.deepEqual(publicChart.data.history,[]);assert.equal((await anon.request('/')).status,200);assert.equal((await anon.request('/assets/app.js')).status,200);assert.equal((await anon.request('/api/catalogs')).status,200);assert.equal((await anon.request('/login')).status,200);
+ for(const method of ['PUT','POST','PATCH','DELETE']){assert.equal((await anon.request('/api/chart',{nodes:publicChart.data.nodes,version:publicChart.data.version},method)).status,401);assert.equal((await anon.request('/api/catalogs',{kind:'designation',name:'Unauthorized'},method)).status,401);}
+ assert.equal((await anon.request('/auth/users')).status,401);assert.equal((await anon.request('/accounts')).status,303);assert.equal((await anon.request('/auth/me')).data.role,'viewer');
  assert.equal((await anon.login('test.admin','wrong')).status,401);
  const login=await admin.login('test.admin',adminPassword);assert.equal(login.status,200);assert.ok(login.headers.get('set-cookie').includes('HttpOnly'));assert.ok(login.headers.get('set-cookie').includes('SameSite=Strict'));
  assert.equal((await editor.login('test.heads',editorPassword)).status,200);
@@ -79,16 +81,16 @@ try{
  let users=(await admin.request('/auth/users')).data.users;const adminId=users.find(u=>u.username==='test.admin').id,editorId=users.find(u=>u.username==='test.heads').id;
  assert.equal((await admin.request('/auth/users/'+adminId,{disabled:true},'PATCH')).status,400);
  const added=await admin.request('/auth/users',{name:'New Head',username:'new.head',password:editorPassword,role:'editor',mustChange:true});assert.equal(added.status,201);
- const newcomer=new Client();assert.equal((await newcomer.login('new.head',editorPassword)).status,200);assert.equal((await newcomer.request('/api/chart')).status,403);
+ const newcomer=new Client();assert.equal((await newcomer.login('new.head',editorPassword)).status,200);assert.equal((await newcomer.request('/api/chart')).data.user.role,'viewer');
  assert.equal((await newcomer.request('/auth/password',{currentPassword:editorPassword,password:'Disposable-New-Password-59!'})).status,200);newcomer.csrf=(await newcomer.request('/auth/me')).data.csrf;assert.equal((await newcomer.request('/api/chart')).status,200);
  assert.equal((await admin.request('/auth/users/'+editorId+'/password',{password:'Disposable-Reset-Password-91!',mustChange:false})).status,200);
- assert.equal((await editor.request('/api/chart')).status,401);
+ assert.equal((await editor.request('/api/chart')).data.user.role,'viewer');
  assert.equal((await editor.login('test.heads',editorPassword)).status,401);assert.equal((await editor.login('test.heads','Disposable-Reset-Password-91!')).status,200);
- assert.equal((await admin.request('/auth/users/'+editorId,{disabled:true},'PATCH')).status,200);assert.equal((await editor.request('/api/chart')).status,401);
+ assert.equal((await admin.request('/auth/users/'+editorId,{disabled:true},'PATCH')).status,200);assert.equal((await editor.request('/api/chart')).data.user.role,'viewer');
  assert.equal((await admin.request('/auth/users/'+editorId,{disabled:false},'PATCH')).status,200);
  for(let i=0;i<8;i++)await anon.login('test.heads','wrong');assert.equal((await anon.login('test.heads','Disposable-Reset-Password-91!')).status,429);
  users=(await admin.request('/auth/users')).data.users;assert.ok(users.every(u=>!('hash'in u)&&!('password'in u)));
  const hashed=app.db.prepare('SELECT hash FROM users WHERE username=?').get('test.admin').hash;assert.ok(hashed.startsWith('scrypt$65536$8$2$'));assert.ok(!hashed.includes(adminPassword));
- assert.equal((await admin.request('/auth/logout',{})).status,200);assert.equal((await admin.request('/auth/me')).status,401);
- console.log('PASS: viewer read-only API guards, super-admin edits/undo, required designation/optional product, catalog creation/persistence, bulk designation and product renames, atomic duplicate rejection, rename undo/redo, login security, CSRF/origin, accounts and session revocation.');
+ assert.equal((await admin.request('/auth/logout',{})).status,200);assert.equal((await admin.request('/auth/me')).data.role,'viewer');assert.equal((await admin.request('/api/chart',{version:0,nodes:[]},'PUT')).status,401);
+ console.log('PASS: public chart/assets/catalog reads without login, anonymous write rejection, viewer guards, private account APIs, super-admin edits/undo, dropdown validation, catalog management, rename propagation, CSRF/origin, login security and session revocation.');
 }finally{await new Promise(r=>app.server.close(r));app.db.close()}

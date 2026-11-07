@@ -73,6 +73,12 @@ export async function createApp({dataDir=path.join(root,'.local-data'),importPre
    db.prepare('UPDATE users SET failed=0,locked_until=0,last_login=? WHERE id=?').run(new Date().toISOString(),current.id);issue(res,current.id);audit(current.username,'Signed in');return json(res,{ok:true,mustChange:!!current.must_change});
   }
   if(route==='/login'&&method==='GET'){if(s)return redirect(res,s.must_change?'/account':'/');return page(res,loginPage(nonce))}
+  // Public reads do not grant a session or write access. Authenticated writes are guarded below.
+  if(route==='/auth/me'&&method==='GET')return json(res,s?viewUser(s):{name:'Guest',role:'viewer',mustChange:false,csrf:''});
+  if(route==='/api/chart'&&method==='GET'){const chart=view(state());return json(res,{...chart,history:s?.role==='admin'&&!s.must_change?chart.history:[],user:{name:s?.name||'Guest',email:'',role:s&&!s.must_change?publicRole(s.role):'viewer',localAuth:true}})}
+  if(route==='/api/catalogs'&&method==='GET')return json(res,catalogs());
+  if(route==='/assets/app.js'||route==='/assets/app.css'){const content=await fs.readFile(path.join(root,'local-dist',route.endsWith('.css')?'app.css':'app.js'));res.writeHead(200,{'Content-Type':route.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8'});return res.end(content)}
+  if(route==='/'&&method==='GET')return page(res,await fs.readFile(path.join(root,'local-dist/index.html'),'utf8'));
   if(!s){if(route.startsWith('/api/')||route.startsWith('/auth/'))return json(res,{error:'Please sign in.'},401);return redirect(res,'/login')}
   if(!['GET','HEAD'].includes(method)&&!safeEqual(req.headers['x-csrf-token'],s.csrf))return json(res,{error:'Your session changed. Reload and try again.'},403);
   if(route==='/auth/me'&&method==='GET')return json(res,viewUser(s));
